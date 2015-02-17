@@ -15,18 +15,17 @@ class I2Cssh
         @sys_events = Appscript.app.by_name('System Events')
         @iterm = Appscript.app.by_name(app_name)
 
-        @pane_menu = @sys_events.processes[app_name].menu_bars[1].menu_bar_items["Window"].menus["Window"].menu_items["Select Split Pane"].menus["Select Split Pane"]
-        @shell_menu = @sys_events.processes[app_name].menu_bars[1].menu_bar_items["Shell"].menus["Shell"]
-        @term = @iterm.make(:new => :terminal)
+        process_name = i2_options[:processname] || 'iTerm2'
+        @pane_menu = @sys_events.processes[process_name].menu_bars[1].menu_bar_items["Window"].menus["Window"].menu_items["Select Split Pane"].menus["Select Split Pane"]
+        @shell_menu = @sys_events.processes[process_name].menu_bars[1].menu_bar_items["Shell"].menus["Shell"]
 
         @profile = i2_options[:profile] || "Default"
-
-        session = @term.sessions.after.make :new => :session
-        session.exec :command => "/bin/bash -l"
+        @iterm.create_window_with_profile @profile
 
         compute_geometry
         maximize(app_name) if i2_options[:fullscreen]
         split_session
+        @sessions = @iterm.current_window.current_tab.sessions
         start_ssh
         enable_broadcast if i2_options[:broadcast]
     end
@@ -109,8 +108,9 @@ class I2Cssh
     end
 
     def start_ssh
-        1.upto(@rows*@columns) do |i|
-            @term.sessions[i].write :text => "/bin/bash -l"
+      1.upto(@rows*@columns) do |i|
+            session = @sessions[i]
+            session.write :text => "/bin/bash -l"
 
             server = @servers[i-1]
             if server then
@@ -122,18 +122,18 @@ class I2Cssh
 
                 if !@ssh_environment.empty? then
                     send_env = "-o SendEnv=#{@ssh_environment.keys.join(",")}"
-                    @term.sessions[i].write :text => "#{@ssh_environment.map{|k,v| "export #{k}=#{v}"}.join('; ')}"
+                    session.write :text => "#{@ssh_environment.map{|k,v| "export #{k}=#{v}"}.join('; ')}"
                 end
                 if @i2_options[:sleep] then
                     sleep @i2_options[:sleep] * i
                 end
-                @term.sessions[i].write :text => "unset HISTFILE && echo -e \"\\033]50;SetProfile=#{@profile}\\a\" && #{@ssh_prefix} #{send_env} #{server}"
+                session.write :text => "unset HISTFILE && echo -e \"\\033]50;SetProfile=#{@profile}\\a\" && #{@ssh_prefix} #{send_env} #{server}"
             else
                 
-                @term.sessions[i].write :text => "unset HISTFILE && echo -e \"\\033]50;SetProfile=#{@profile}\\a\""
+                session.write :text => "unset HISTFILE && echo -e \"\\033]50;SetProfile=#{@profile}\\a\""
                 sleep 0.3
-                @term.sessions[i].foreground_color.set "red"
-                @term.sessions[i].write :text => "stty -isig -icanon -echo && echo -e '#{"\n"*100}UNUSED' && cat > /dev/null"
+                session.foreground_color.set "red"
+                session.write :text => "stty -isig -icanon -echo && echo -e '#{"\n"*100}UNUSED' && cat > /dev/null"
             end
         end
     end
