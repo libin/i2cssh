@@ -24,8 +24,8 @@ class I2Cssh
 
         compute_geometry
         maximize(app_name) if i2_options[:fullscreen]
-        split_session
         @sessions = @iterm.current_window.current_tab.sessions
+        split_session
         start_ssh
         enable_broadcast if i2_options[:broadcast]
     end
@@ -61,44 +61,33 @@ class I2Cssh
             @i2_options[:fullscreen] = true
         end
     end
-
+    
     def split_session
-        left = @pane_menu.menu_items["Select Pane Left"]
-        right = @pane_menu.menu_items["Select Pane Right"]
-        up = @pane_menu.menu_items["Select Pane Above"]
-        down = @pane_menu.menu_items["Select Pane Below"]
-
-
-        begin
-            split_vert = @shell_menu.menu_items["Split Vertically"]
-            split_hori = @shell_menu.menu_items["Split Horizontally"]
-            split_vert.get
-            split_hori.get
-        rescue
-            split_vert = @shell_menu.menu_items["Split Vertically with Current Profile"]
-            split_hori = @shell_menu.menu_items["Split Horizontally with Current Profile"]
+      splitmap = {
+        :row => {:x => @columns, :y => @rows, 0 => :split_horizontally_with_same_profile, 1 => :split_vertically_with_same_profile }, 
+        :column => {:x => @rows, :y => @columns, 0 => :split_vertically_with_same_profile, 1 => :split_horizontally_with_same_profile}
+      }
+      splitconfig = splitmap[@i2_options[:direction]]
+      
+      current_session = @iterm.current_window.current_tab.current_session
+      sessions = [current_session.unique_ID.get]
+      2.upto(splitconfig[:x]) do
+        current_session.send splitconfig[0]
+        sessions << current_session.unique_ID.get
+      end
+      
+      sessions.each do |s|
+        session = nil
+        1.upto(@sessions.count) do |i|
+          next unless @sessions[i].unique_ID.get == s
+          session = @sessions[i]
+          break
         end
-
-        splitmap = {
-            :column => {0 => split_vert, 1 => left, 2 => split_hori, 3=> right, :x => @columns, :y => @rows}, 
-            :row => {0 => split_hori, 1=> up, 2 => split_vert, 3=> down, :x => @rows, :y => @columns}
-        }
-        splitconfig = splitmap[@i2_options[:direction]]
-
-        first = true
-        2.upto splitconfig[:x] do
-            splitconfig[0].click
+        session.select
+        2.upto(splitconfig[:y]) do
+          session.send splitconfig[1]
         end
-        2.upto splitconfig[:y] do
-            1.upto splitconfig[:x] do
-                splitconfig[1].click
-                first = false
-            end
-            splitconfig[:x].times do |x|
-                splitconfig[2].click
-                splitconfig[3].click
-            end
-        end
+      end
     end
 
     def enable_broadcast
@@ -110,7 +99,8 @@ class I2Cssh
     def start_ssh
       1.upto(@rows*@columns) do |i|
             session = @sessions[i]
-            session.write :text => "/bin/bash -l"
+            session.select
+            session.write :text => " /bin/bash -l"
 
             server = @servers[i-1]
             if server then
