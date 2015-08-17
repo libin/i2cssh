@@ -21,10 +21,10 @@ class I2Cssh
 
         @profile = i2_options[:profile] || "Default"
         @iterm.create_window_with_profile @profile
+        @window = @iterm.current_window
 
         compute_geometry
         maximize(app_name) if i2_options[:fullscreen]
-        @sessions = @iterm.current_window.current_tab.sessions
         split_session
         start_ssh
         enable_broadcast if i2_options[:broadcast]
@@ -69,20 +69,12 @@ class I2Cssh
       }
       splitconfig = splitmap[@i2_options[:direction]]
       
-      current_session = @iterm.current_window.current_tab.current_session
-      sessions = [current_session.unique_ID.get]
+      current_session = @window.current_tab.current_session
       2.upto(splitconfig[:x]) do
         current_session.send splitconfig[0]
-        sessions << current_session.unique_ID.get
       end
       
-      sessions.each do |s|
-        session = nil
-        1.upto(@sessions.count) do |i|
-          next unless @sessions[i].unique_ID.get == s
-          session = @sessions[i]
-          break
-        end
+      @window.current_tab.sessions.get.each do |session|
         session.select
         2.upto(splitconfig[:y]) do
           session.send splitconfig[1]
@@ -97,8 +89,9 @@ class I2Cssh
     end
 
     def start_ssh
+      sessions = @window.current_tab.sessions
       1.upto(@rows*@columns) do |i|
-            session = @sessions[i]
+            session = sessions[i]
             session.select
             session.write :text => " /bin/bash -l"
 
