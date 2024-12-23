@@ -296,11 +296,16 @@ def app(hosts_or_cluster, *_args, **cmdline_opts):
         for hosts in groups
     ]
 
+    # Preserve current $PATH variable. Some shells (e.g. fish) are not in the default $PATH.
+    current_path = os.environ.get("PATH")
+
     # Execute the SSH sessions
-    iterm2.run_until_complete(exec_in_iterm(groups, cmdline_opts, global_opts))
+    iterm2.run_until_complete(
+        exec_in_iterm(groups, cmdline_opts, global_opts, current_path)
+    )
 
 
-def exec_in_iterm(groups, cmdline_opts, global_opts):
+def exec_in_iterm(groups, cmdline_opts, global_opts, path):
     """
     Execute the SSH sessions in iTerm2
     This function takes in groups of hosts and global options and returns an
@@ -320,11 +325,11 @@ def exec_in_iterm(groups, cmdline_opts, global_opts):
 
         for i, group in enumerate(groups):
             profile_name = group.get("profile")
-
+            shell_name = group.get("shell")
             # Set the shell to be used for the session. Rather than executing this in the
             # default shell, we add it to a LocalWriteOnlyProfile (lwop) that is then passed in as
             # profile_customizations when creating tabs and panes.
-            shell = f"/usr/bin/env {group.get('shell')} -l"
+            shell = f'/usr/bin/env PATH="{path}" {shell_name} -l'
             lwop = create_lwop(shell)
 
             # If this is the first host in the group and we want sessions in a separate window,
@@ -397,7 +402,13 @@ def exec_in_iterm(groups, cmdline_opts, global_opts):
                     if custom_command:
                         # substitute the host name in the custom command
                         cmd = custom_command.replace("{host}", host).lstrip()
-                        await execute_command(pane, f" unset HISTFILE && {cmd}\n")
+
+                        if shell_name == "fish":
+                            cmd = f' set -x fish_histfile ""; {cmd}\n'
+                        else:
+                            cmd = f" unset HISTFILE && {cmd}\n"
+
+                        await execute_command(pane, cmd)
                     else:
                         env_vars = {}
                         send_env = ""
@@ -436,7 +447,11 @@ def exec_in_iterm(groups, cmdline_opts, global_opts):
                         if s := host_opts.get("sleep"):
                             await sleep(s)
 
-                        cmd = f"unset HISTFILE && {ssh_prefix} {send_env} {host}\n"
+                        if shell_name == "fish":
+                            cmd = f' set -x fish_histfile ""; {ssh_prefix} {send_env} {host}\n'
+                        else:
+                            cmd = f"unset HISTFILE && {ssh_prefix} {send_env} {host}\n"
+                            
                         cmd = re.sub(" +", " ", cmd)
                         await execute_command(pane, cmd)
 
@@ -461,7 +476,7 @@ async def split_pane(profile_name, lwop, vertical, pane):
     return pane
 
 
-def create_lwop(shell):
+def create_lwop(shell) -> LocalWriteOnlyProfile:
     """Create a LocalWriteOnlyProfile that sets the shell to be used for the session"""
     lwop = LocalWriteOnlyProfile()
     lwop.set_use_custom_command("Yes")
